@@ -9,4 +9,4 @@ fi
 
 exit 0
 
-docker compose --profile full-service create --build --force-recreate
+docker compose --profile base-image --build --force-recreate
