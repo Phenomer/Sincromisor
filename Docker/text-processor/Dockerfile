@@ -8,9 +8,9 @@ ENV SINCROMISOR_CONF=/opt/sincromisor/config.yml
 ENV SINCROMISOR_WORKER_ID=1
 
 ENV SINCRO_HOST=0.0.0.0
-ENV SINCRO_PORT=8003
-ENV SINCRO_PUBLIC_BIND_HOST=speech-extractor
-ENV SINCRO_PUBLIC_BIND_PORT=8003
+ENV SINCRO_PORT=8006
+ENV SINCRO_PUBLIC_BIND_HOST=text-processor
+ENV SINCRO_PUBLIC_BIND_PORT=8006
 ENV SINCRO_REDIS_HOST=sincro-voice-cache
 ENV SINCRO_REDIS_PORT=6379
 
@@ -31,13 +31,10 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
 USER ${SINCRO_USER_ID}
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# MediaPipeの実行時依存
-# libgl1: libGL.so.1
-# libglib2.0-bin: libgthread-2.0.so.0
-USER root
-RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
-    --mount=type=cache,target=/var/cache/apt/archives,sharing=locked \
-    apt-get install -y libgl1 libglib2.0-bin
+#USER root
+#RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+#    --mount=type=cache,target=/var/cache/apt/archives,sharing=locked \
+#    apt-get install -y fdkaac opus-tools
 
 USER ${SINCRO_USER_ID}
 COPY --chown=${SINCRO_USER_ID}:${SINCRO_USER_ID} \
@@ -92,7 +89,7 @@ COPY --chown=${SINCRO_USER_ID}:${SINCRO_USER_ID} \
 # 一旦依存ライブラリをsyncする
 # sincromisor-serverのモジュールは、空のまま依存関係だけ解決される
 RUN --mount=type=cache,target=${SINCRO_USER_DIR}/.cache,uid=1001,gid=1001 \
-    uv sync --group speech-extractor
+    uv sync --group text-processor
 
 # sincromisor-serverのソースコード一式をここでコピー
 COPY --chown=${SINCRO_USER_ID}:${SINCRO_USER_ID} \
@@ -101,14 +98,14 @@ COPY --chown=${SINCRO_USER_ID}:${SINCRO_USER_ID} \
 
 # sincromisor-serverのモジュールをビルドし直す
 RUN --mount=type=cache,target=${SINCRO_USER_DIR}/.cache,uid=1001,gid=1001 \
-    uv sync --group speech-extractor
+    uv sync --group text-processor
 
 WORKDIR ${SINCRO_USER_DIR}/sincromisor-server
 
-CMD uv run speech-extractor/SpeechExtractorProcess.py \
+CMD uv run text-processor/TextProcessorProcess.py \
     --host "${SINCRO_HOST}" \
     --port "${SINCRO_PORT}" \
     --public-bind-host "${SINCRO_PUBLIC_BIND_HOST}" \
     --public-bind-port "${SINCRO_PUBLIC_BIND_PORT}" \
     --redis-host "${SINCRO_REDIS_HOST}" \
-    --redis-port "${SINCRO_REDIS_PORT}"
+    --redis-port "${SINCRO_REDIS_PORT}" \
