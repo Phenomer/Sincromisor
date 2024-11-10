@@ -3,27 +3,28 @@ import logging.config
 from logging import Logger
 from setproctitle import setproctitle
 from sincro_config import SincromisorLoggerConfig, KeepAliveReporter
-from voice_synthesizer.models import VoiceSynthesizerProcessArgument
+from text_processor.models import TextProcessorProcessArgument
 
-setproctitle("VSynthesizer")
+setproctitle(f"SPExtractor")
 
-args: VoiceSynthesizerProcessArgument = VoiceSynthesizerProcessArgument.argparse()
+args: TextProcessorProcessArgument = TextProcessorProcessArgument.argparse()
 logging.config.dictConfig(
     SincromisorLoggerConfig.generate(log_file=args.log_file, stdout=True)
 )
+
 
 import traceback
 from threading import Event
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from voice_synthesizer.VoiceSynthesizer import VoiceSynthesizerWorker
+from text_processor.TextProcessor import TextProcessorWorker
 
 
-class VoiceSynthesizerProcess:
-    def __init__(self, args: VoiceSynthesizerProcessArgument):
+class TextProcessorProcess:
+    def __init__(self, args: TextProcessorProcessArgument):
         self.__logger: Logger = logging.getLogger("sincro." + __name__)
-        self.__logger.info("===== Starting VoiceSynthesizerProcess =====")
-        self.__args: VoiceSynthesizerProcessArgument = args
+        self.__logger.info("===== Starting TextProcessorProcess =====")
+        self.__args: TextProcessorProcessArgument = args
 
     def start(self):
         app: FastAPI = FastAPI()
@@ -34,24 +35,18 @@ class VoiceSynthesizerProcess:
             redis_port=self.__args.redis_port,
             public_bind_host=self.__args.public_bind_host,
             public_bind_port=self.__args.public_bind_port,
-            worker_type="VoiceSynthesizer",
+            worker_type="TextProcessor",
             interval=5,
         )
         self.keepalive_t.start()
+        self.__worker: TextProcessorWorker = TextProcessorWorker()
 
-        @app.websocket("/VoiceSynthesizer")
+        @app.websocket("/TextProcessor")
         async def websocket_chat_endpoint(ws: WebSocket):
             self.__logger.info("Connected Websocket.")
             try:
                 await ws.accept()
-                voice_synthesizer = VoiceSynthesizerWorker(
-                    voicevox_host=self.__args.voicevox_host,
-                    voicevox_port=self.__args.voicevox_port,
-                    voicevox_style_id=self.__args.voicevox_default_style_id,
-                    redis_host=self.__args.redis_host,
-                    redis_port=self.__args.redis_port,
-                )
-                await voice_synthesizer.communicate(ws=ws)
+                await self.__worker.communicate(ws=ws)
             except WebSocketDisconnect:
                 self.__logger.info("Disconnected WebSocket.")
             except Exception as e:
@@ -70,4 +65,4 @@ class VoiceSynthesizerProcess:
 
 
 if __name__ == "__main__":
-    VoiceSynthesizerProcess(args=args).start()
+    TextProcessorProcess(args=args).start()
