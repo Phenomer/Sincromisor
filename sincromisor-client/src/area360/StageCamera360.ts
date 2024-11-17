@@ -1,59 +1,31 @@
-import { Scene } from '@babylonjs/core/scene';
-import { Camera, ArcRotateCamera } from '@babylonjs/core/Cameras';
+import { ArcRotateCamera } from '@babylonjs/core/Cameras';
 import { Vector3 } from '@babylonjs/core/Maths';
 import { Tools } from '@babylonjs/core/Misc/tools';
+import { StageCamera } from '../ts/Scene/SceneCamera';
 
-export class StageCamera {
-    protected readonly canvas: HTMLCanvasElement;
-    protected readonly scene: Scene;
-    protected readonly camera: ArcRotateCamera;
+export class StageCamera360 extends StageCamera {
     /*
         Alpha: 水平方向の回転.
         Beta: 垂直方向の回転,
         Radius: 中心からの距離
-    */
-    protected readonly defaultAlpha: number = 0.0;
-    protected readonly defaultBeta: number = Math.PI / 2;
-    protected readonly defaultRadius: number = 2.0;
-    protected readonly cameraTarget: Vector3 = new Vector3(0, 1.25, 0);
-    protected cameraDistance: number = 0.75;
+*/
+    protected override readonly defaultAlpha: number = 0.0;
+    protected override readonly defaultBeta: number = Math.PI / 2;
+    protected override readonly defaultRadius: number = 2.0;
+    protected override readonly cameraTarget: Vector3 = new Vector3(0, 1.25, 0);
+    protected override cameraDistance: number = 0.75;
 
-    constructor(canvas: HTMLCanvasElement, scene: Scene, vrMode: boolean) {
-        this.canvas = canvas;
-        this.scene = scene;
-        if (vrMode) {
-            this.camera = this.createVRCamera();
-        } else {
-            this.camera = this.createCamera();
-            this.reconfigure();
-        }
-    }
-
-    /* カメラ目線を作りたい時のターゲット座標を計算 */
-    getEyeTarget(): Vector3 {
-        const cameraDirection = this.getCameraDirection();
-        return new Vector3(
-            (this.camera.beta - Math.PI / 2) / 2,
-            -Math.atan2(cameraDirection.x, cameraDirection.z) - this.defaultBeta,
-            0
-        )
-    }
-
-    private getCameraDirection(): Vector3 {
-        return this.camera.getTarget().subtract(this.camera.position).normalize();
-    }
-
-    protected createCamera(): ArcRotateCamera {
+    protected override createCamera(): ArcRotateCamera {
         const camera: ArcRotateCamera = new ArcRotateCamera('camera',
             this.defaultAlpha, this.defaultBeta, this.defaultRadius, this.cameraTarget, this.scene);
-        camera.mode = Camera.ORTHOGRAPHIC_CAMERA;
+        //camera.mode = Camera.ORTHOGRAPHIC_CAMERA;
         camera.attachControl(this.canvas, true);
         camera.lowerAlphaLimit = Tools.ToRadians(-180); // 左回転の制御
         camera.upperAlphaLimit = Tools.ToRadians(180); // 右回転の制御
         camera.upperBetaLimit = Tools.ToRadians(135);
         camera.lowerBetaLimit = Tools.ToRadians(0);
         camera.lowerRadiusLimit = 0.3; // キャラクターの中身が見えないところまで
-        camera.upperRadiusLimit = 5.0; // 離れすぎないようにする
+        camera.upperRadiusLimit = 6.0; // 離れすぎないようにする
         camera.fov = 0.4;
         camera.minZ = 0.001;
         // ctrl + マウスドラッグの慣性をひかえめに
@@ -76,26 +48,6 @@ export class StageCamera {
         });
 
         return camera;
-    }
-
-    protected createVRCamera(): ArcRotateCamera {
-        const scale: number = 0.015;
-        const defaultVRAlpha: number = 3 * Math.PI / 2;
-        const defaultVRBeta: number = Math.PI / 50;
-        const defaultVRRadius: number = 220 * scale;
-        const camera: ArcRotateCamera = new ArcRotateCamera("Camera",
-            defaultVRAlpha, defaultVRBeta, defaultVRRadius, Vector3.Zero(), this.scene);
-        camera.attachControl(this.canvas, true);
-        return camera;
-    }
-
-    // canvasリサイズ時にORTHOGRAPHIC_CAMERAを再設定
-    reconfigure(): void {
-        const ratio: number = this.canvas.height / this.canvas.width;
-        this.camera.orthoLeft = -this.cameraDistance / 2;
-        this.camera.orthoRight = this.cameraDistance / 2;
-        this.camera.orthoTop = this.camera.orthoRight * ratio;
-        this.camera.orthoBottom = this.camera.orthoLeft * ratio;
     }
 }
 
