@@ -1,25 +1,24 @@
-import { SincroController } from "./SincroController";
-import { DialogManager } from "./UI/DialogManager";
-import { ChatMessageManager } from "./UI/ChatMessageManager";
-import { CharacterManager } from "./Character/CharacterManager";
-import { SincroScene } from "./Scene/SincroScene";
-import { TalkManager } from "./RTC/TalkManager";
-import { UserMediaManager } from "./RTC/UserMediaManager";
+import { SincroController } from "../SincroController";
+import { DialogManager } from "../UI/DialogManager";
+import { ChatMessageManager } from "../UI/ChatMessageManager";
+import { TalkManager } from "../RTC/TalkManager";
+import { UserMediaManager } from "../RTC/UserMediaManager";
+import { VRMScene } from './VRMScene/VRMScene';
 
-export class SincroInitializer {
+
+export class SincroVRMInitializer {
     protected readonly dialogManager: DialogManager;
     protected readonly chatMessageManager: ChatMessageManager;
     protected readonly talkManager: TalkManager;
-    protected readonly charCanvas: HTMLCanvasElement;
+    protected readonly charCanvas: HTMLDivElement;
 
     constructor() {
         this.dialogManager = DialogManager.getManager();
         this.chatMessageManager = ChatMessageManager.getManager();
         this.talkManager = TalkManager.getManager();
-        this.charCanvas = this.getCharCanvas();
+        this.charCanvas = this.getCharCanvasRoot();
 
         this.getUserMediaAvailabilityCheck();
-        this.characterAvailabilityCheck();
         this.setStartButtonEvent();
 
         if ('obsstudio' in window) {
@@ -27,8 +26,8 @@ export class SincroInitializer {
         }
     }
 
-    private getCharCanvas(): HTMLCanvasElement {
-        const charCanvas: HTMLCanvasElement | null = document.querySelector('canvas#sincroCharacterBox__canvas') as HTMLCanvasElement | null;
+    private getCharCanvasRoot(): HTMLDivElement {
+        const charCanvas: HTMLDivElement | null = document.querySelector('div#sincroCharacterBox');
         if (!charCanvas) {
             throw 'canvas#sincroCharacterBox__canvas is not found.';
         }
@@ -41,13 +40,6 @@ export class SincroInitializer {
         }
     }
 
-    private characterAvailabilityCheck(): void {
-        CharacterManager.availabilityCheck(() => {
-            this.dialogManager.updateCharacterStatus(true);
-        }, () => {
-            this.dialogManager.updateCharacterStatus(false);
-        });
-    }
 
     private setStartButtonEvent(): void {
         this.dialogManager.setRTCStartButtonEventListener(() => {
@@ -67,20 +59,20 @@ export class SincroInitializer {
         });
 
         if (this.dialogManager.enableCharacter()) {
-            const sincroScene: SincroScene = this.initializeSincroScene();
-            sincroScene.createScene();
-            sincroScene.run();
+            const sincroScene: VRMScene = this.initializeSincroScene();
+            sincroScene.animate();
         }
 
         this.dialogManager.closeDialog();
     }
 
-    protected initializeSincroScene(): SincroScene {
-        return new SincroScene(
+    protected initializeSincroScene(): VRMScene {
+        return new VRMScene(this.charCanvas);
+        /*
             this.charCanvas, this.talkManager,
             this.dialogManager.enableVR(),
             this.dialogManager.enableCharacter(),
             this.dialogManager.enableInspector()
-        );
+        */
     }
 }
