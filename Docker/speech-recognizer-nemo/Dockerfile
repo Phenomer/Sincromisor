@@ -1,25 +1,15 @@
-FROM ubuntu:24.04
+FROM nvidia/cuda:12.8.0-cudnn-runtime-ubuntu24.04 AS builder
 
 ARG SINCRO_USER_ID=sincromisor
 ARG SINCRO_USER_DIR=/opt/${SINCRO_USER_ID}
 
 ENV PATH=${SINCRO_USER_DIR}/.cargo/bin:${SINCRO_USER_DIR}/.local/bin:${PATH}
 
-ENV SINCRO_RTC_HOST=0.0.0.0
-ENV SINCRO_RTC_PORT=8001
-ENV SINCRO_RTC_PUBLIC_BIND_HOST=sincro-rtc
-ENV SINCRO_RTC_PUBLIC_BIND_PORT=8001
-ENV SINCRO_CONSUL_AGENT_HOST=sincro-consul-agent
-ENV SINCRO_CONSUL_AGENT_PORT=8500
-ENV SINCRO_RTC_FORWARDED_ALLOW_IPS=127.0.0.0/8,192.168.0.0/16,172.16.0.0/12,10.0.0.0/8
-ENV SINCRO_RTC_MAX_SESSIONS=10
-
 WORKDIR ${SINCRO_USER_DIR}
 
 RUN --mount=type=cache,target=${SINCRO_USER_DIR}/.cache,uid=1001,gid=1001 \
     useradd -u 1001 -s /bin/bash -d ${SINCRO_USER_DIR} ${SINCRO_USER_ID} && \
     mkdir ${SINCRO_USER_DIR}/sincromisor-server && \
-    mkdir ${SINCRO_USER_DIR}/configs && \
     chown -R ${SINCRO_USER_ID}:${SINCRO_USER_ID} ${SINCRO_USER_DIR}
 
 # curl: uvのインストール
@@ -27,15 +17,11 @@ RUN --mount=type=cache,target=${SINCRO_USER_DIR}/.cache,uid=1001,gid=1001 \
 RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     --mount=type=cache,target=/var/cache/apt/archives,sharing=locked \
     apt-get update \
-    && apt-get install -y curl git
+    && apt-get install -y curl git \
+    llvm-14-dev libsentencepiece-dev libprotobuf-dev python3-dev build-essential
 
 USER ${SINCRO_USER_ID}
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-
-USER root
-RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
-    --mount=type=cache,target=/var/cache/apt/archives,sharing=locked \
-    apt-get install -y fdkaac opus-tools
 
 USER ${SINCRO_USER_ID}
 COPY --chown=${SINCRO_USER_ID}:${SINCRO_USER_ID} \
@@ -93,10 +79,63 @@ COPY --chown=${SINCRO_USER_ID}:${SINCRO_USER_ID} \
     ./sincromisor-server/voice-synthesizer/.python-version \
     ${SINCRO_USER_DIR}/sincromisor-server/voice-synthesizer/
 
-# 一旦依存ライブラリをsyncする
-# sincromisor-serverのモジュールは、空のまま依存関係だけ解決される
+# Sincromisorが依存している外部ライブラリをsyncする。
+# sincromisor-server配下のモジュールは、空のまま依存関係だけ解決される。
+# こうすることで、sincromisor-server配下のモジュールを書き換えた際に、外部モジュールを再syncする手間を省く。
 RUN --mount=type=cache,target=${SINCRO_USER_DIR}/.cache,uid=1001,gid=1001 \
-    uv sync --group sincro-rtc
+    uv sync --group speech-recognizer-nemo
+
+#------------------------------------------------------------
+FROM nvidia/cuda:12.8.0-cudnn-runtime-ubuntu24.04 AS runner
+
+ARG SINCRO_USER_ID=sincromisor
+ARG SINCRO_USER_DIR=/opt/${SINCRO_USER_ID}
+
+ENV PATH=${SINCRO_USER_DIR}/.cargo/bin:${SINCRO_USER_DIR}/.local/bin:${PATH}
+ENV SINCROMISOR_CONF=/opt/sincromisor/config.yml
+
+ENV SINCRO_RECOGNIZER_HOST=0.0.0.0
+ENV SINCRO_RECOGNIZER_PORT=8003
+ENV SINCRO_RECOGNIZER_PUBLIC_BIND_HOST=speech-recognizer-nemo
+ENV SINCRO_RECOGNIZER_PUBLIC_BIND_PORT=8003
+ENV SINCRO_CONSUL_AGENT_HOST=sincro-consul-agent
+ENV SINCRO_CONSUL_AGENT_PORT=8500
+# SINCRO_RECOGNIZER_VOICE_LOG_DIRが空の場合、音声認識ログを出力しない
+ENV SINCRO_RECOGNIZER_VOICE_LOG_DIR=
+
+RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    --mount=type=cache,target=/var/cache/apt/archives,sharing=locked \
+    apt-get update && \
+    apt-get install -y \
+    libsentencepiece0 libprotobuf-c1 ffmpeg
+
+RUN --mount=type=cache,target=${SINCRO_USER_DIR}/.cache,uid=1001,gid=1001 \
+    useradd -u 1001 -s /bin/bash -d ${SINCRO_USER_DIR} ${SINCRO_USER_ID} && \
+    mkdir ${SINCRO_USER_DIR}/sincromisor-server && \
+    chown -R ${SINCRO_USER_ID}:${SINCRO_USER_ID} ${SINCRO_USER_DIR}
+
+WORKDIR ${SINCRO_USER_DIR}
+
+COPY --from=builder --chown=${SINCRO_USER_ID}:${SINCRO_USER_ID} \
+    ${SINCRO_USER_DIR}/.local \
+    ${SINCRO_USER_DIR}/.local
+
+COPY --from=builder --chown=${SINCRO_USER_ID}:${SINCRO_USER_ID} \
+    ${SINCRO_USER_DIR}/.venv \
+    ${SINCRO_USER_DIR}/.venv
+
+COPY --from=builder --chown=${SINCRO_USER_ID}:${SINCRO_USER_ID} \
+    ${SINCRO_USER_DIR}/.config \
+    ${SINCRO_USER_DIR}/.config
+
+COPY --from=builder --chown=${SINCRO_USER_ID}:${SINCRO_USER_ID} \
+    ${SINCRO_USER_DIR}/README.md \
+    ${SINCRO_USER_DIR}/pyproject.toml \
+    ${SINCRO_USER_DIR}/uv.lock \
+    ${SINCRO_USER_DIR}/.python-version \
+    ${SINCRO_USER_DIR}/
+
+RUN ls -la ${SINCRO_USER_DIR}
 
 # sincromisor-serverのソースコード一式をここでコピー
 COPY --chown=${SINCRO_USER_ID}:${SINCRO_USER_ID} \
@@ -105,8 +144,7 @@ COPY --chown=${SINCRO_USER_ID}:${SINCRO_USER_ID} \
 
 # sincromisor-serverのモジュールをビルドし直す
 RUN --mount=type=cache,target=${SINCRO_USER_DIR}/.cache,uid=1001,gid=1001 \
-    uv sync --group sincro-rtc
+    uv sync --group speech-recognizer-nemo
 
-WORKDIR ${SINCRO_USER_DIR}/sincromisor-server
-
-CMD ["uv", "run", "sincro-rtc/RTCSignalingServer.py"]
+USER ${SINCRO_USER_ID}
+CMD ["uv", "run", "speech-recognizer/SpeechRecognizerProcess.py"]
