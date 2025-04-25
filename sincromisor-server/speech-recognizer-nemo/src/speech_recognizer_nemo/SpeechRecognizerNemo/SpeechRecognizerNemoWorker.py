@@ -8,15 +8,13 @@ from time import perf_counter
 import numpy as np
 from sincro_models import SpeechExtractorResult, SpeechRecognizerResult
 
-from .SpeechRecognizer import SpeechRecognizer
+from .SpeechRecognizerNemo import SpeechRecognizerNemo
 
 
-class SpeechRecognizerWorker:
+class SpeechRecognizerNemoWorker:
     def __init__(self, voice_log_dir: str | None):
         self.logger: Logger = logging.getLogger("sincro." + self.__class__.__name__)
-        self.s2t: SpeechRecognizer = SpeechRecognizer(
-            decode_options={"max_new_tokens": 255},
-        )
+        self.s2t: SpeechRecognizerNemo = SpeechRecognizerNemo()
         self.voice_log_dir: str | None = voice_log_dir
         self.logger.info("SpeechRecognizerWorker is initialized.")
 
@@ -43,26 +41,8 @@ class SpeechRecognizerWorker:
             self.__export_voice(spe_result)
         return sr_result
 
-    def __transcribe(self, voice: np.ndarray) -> list[tuple[str, float]]:
-        _, outputs = self.s2t.transcribe(
-            voice,
-            decode_options={
-                "max_new_tokens": 500,
-            },
-        )
-        # ダミースコア1.0を付与し、transcribe_with_scoreと同じ構造で返す。
-        return [(self.s2t.decode(outputs), 1.0)]
-
     def __transcribe_with_score(self, voice: np.ndarray) -> list[tuple[str, float]]:
-        inputs, outputs = self.s2t.transcribe(
-            voice,
-            decode_options={
-                "output_scores": True,
-                "return_dict_in_generate": True,
-                "max_new_tokens": 500,
-            },
-        )
-        return self.s2t.transcribe_with_score(inputs, outputs)
+        return self.s2t.transcribe_with_score(voice)
 
     def __export_result(self, result: SpeechRecognizerResult) -> Path | None:
         if self.voice_log_dir is None:
